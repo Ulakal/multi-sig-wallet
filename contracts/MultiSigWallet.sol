@@ -68,13 +68,6 @@ contract MultiSigWallet {
 
         transactions.push(transaction);
         
-        /*transactions.push(Transaction({
-            to: _to,
-            value: _value,
-            data: _data,
-            executed: false,
-            confirmationsNr: 1
-        }));*/
         confirmTransaction(_txIndex);
 
        emit TransactionSubmitted(_txIndex, msg.sender, _to, _value);
@@ -123,11 +116,6 @@ contract MultiSigWallet {
         funds[msg.sender] += msg.value;
         emit Deposit(msg.sender, msg.value, address(this).balance);
         return address(this).balance;
-    }
-    
-    function retrieveFunds() public onlyOwner() {
-        uint256 value = funds[msg.sender];
-        msg.sender.transfer(value);
     }
     
     function balance() public view onlyOwner() returns(uint256) {
