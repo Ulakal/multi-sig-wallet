@@ -9,13 +9,13 @@ contract MultiSigWallet {
         uint256 value;
         bytes data;
         bool executed;
-        mapping(address => bool) isConfirmed;
         uint256 confirmationsNr;
     }
 
     Transaction[] public transactions;
 
     mapping(address => bool) public isOwner;
+    mapping(uint256 => mapping(address => bool)) public isConfirmed;
     mapping(address => uint256) public funds;
 
     modifier onlyOwner() {
@@ -31,11 +31,11 @@ contract MultiSigWallet {
         _;
     }
 
-    event TransactionSubmitted(uint256 txIndex, address creator, address to, uint256 value);
+    event TransactionSubmitted(uint256 txIndex, address indexed creator, address to, uint256 value);
     event TransactionConfirmed(uint256 txIndex, address confirmedBy);
-    event TransactionExecuted(address to, uint256 value, address executedBy);
+    event TransactionExecuted(address indexed to, uint256 value, address executedBy);
     event ConfirmationRevoked(uint256 txIndex, address revokedBy);
-    event Deposit(address from, uint256 value, uint256 balance);
+    event Deposit(address indexed from, uint256 value, uint256 balance);
 
     
     
@@ -74,9 +74,9 @@ contract MultiSigWallet {
     }
 
     function confirmTransaction(uint256 _txIndex) public onlyOwner() txExists(_txIndex) notExecuted(_txIndex) {
-        require(transactions[_txIndex].isConfirmed[msg.sender] == false, 'transaction already confirmed');
+        require(isConfirmed[_txIndex][msg.sender] == false, 'transaction already confirmed');
 
-        transactions[_txIndex].isConfirmed[msg.sender] = true;
+        isConfirmed[_txIndex][msg.sender] = true;
         transactions[_txIndex].confirmationsNr += 1;
 
         emit TransactionConfirmed(_txIndex, msg.sender);
@@ -95,23 +95,24 @@ contract MultiSigWallet {
     }
 
     function revokeConfirmation(uint256 _txIndex) public onlyOwner() txExists(_txIndex) notExecuted(_txIndex) {
-        require(transactions[_txIndex].isConfirmed[msg.sender] == true, 'you havent confirmed this transaction');
+        require(isConfirmed[_txIndex][msg.sender] == true, 'you havent confirmed this transaction');
 
-        transactions[_txIndex].isConfirmed[msg.sender] = false;
+        isConfirmed[_txIndex][msg.sender] = false;
         transactions[_txIndex].confirmationsNr -= 1;
 
         emit ConfirmationRevoked(_txIndex, msg.sender);
     }
     
-    function isConfirmed(uint256 _txIndex) public view onlyOwner() txExists(_txIndex) returns (bool) {
-        return transactions[_txIndex].isConfirmed[msg.sender];
-    }
-    
     function transactionCount() public view onlyOwner() returns(uint256) {
         return transactions.length;
     }
+
+    //this function is available for version 0.7.5 (returning an array of structs)
+    /*function getTransactions() public onlyOwner() returns(Transaction[] memory){
+        return transactions;
+    }*/
     
-    function deposit() payable external returns(uint256 balance) {
+    function deposit() payable external returns(uint256) {
         require(msg.value > 0, 'you must send more than 0');
         funds[msg.sender] += msg.value;
         emit Deposit(msg.sender, msg.value, address(this).balance);
