@@ -3,6 +3,7 @@ pragma solidity 0.5.8;
 contract MultiSigWallet {
     address[] public owners;
     uint public confirmationsRequired;
+    uint public maxOwners = 10;
 
     struct Transaction {
         address payable to;
@@ -11,9 +12,11 @@ contract MultiSigWallet {
         bool executed;
         uint256 confirmationsNr;
     }
+    
 
     Transaction[] public transactions;
 
+    
     mapping(address => bool) public isOwner;
     mapping(uint256 => mapping(address => bool)) public isConfirmed;
     mapping(address => uint256) public funds;
@@ -22,12 +25,22 @@ contract MultiSigWallet {
         require(isOwner[msg.sender] == true, 'you are not an owner');
         _;
     }
+    modifier onlyWallet() {
+        require(msg.sender == address(this));
+        _;
+    }
     modifier txExists(uint _txIndex) {
         require(_txIndex < transactions.length, 'transaction doesnt exist');
         _;
     }
     modifier notExecuted(uint _txIndex) {
         require(transactions[_txIndex].executed == false, 'transaction already executed');
+        _;
+    }
+    modifier validRequirement(uint _ownersNumber, uint _confirmationsRequired) {
+        require(_ownersNumber > 0, 'owners required');
+        require(_ownersNumber <= maxOwners, 'too many owners');
+        require(_confirmationsRequired > 0 && _confirmationsRequired < _ownersNumber, 'invalid confirmations number');
         _;
     }
 
@@ -39,9 +52,7 @@ contract MultiSigWallet {
 
     
     
-    constructor(address[] memory _owners, uint _confirmationsRequired) public {
-        require(_owners.length > 0, 'owners required');
-        require(_confirmationsRequired > 0 && _confirmationsRequired < _owners.length, 'invalid confirmations number');
+    constructor(address[] memory _owners, uint _confirmationsRequired) public validRequirement(_owners.length, _confirmationsRequired) {
 
         for (uint i=0; i < _owners.length; i++) {
             require(_owners[i] != address(0), 'invalid owner');
@@ -53,6 +64,14 @@ contract MultiSigWallet {
         }
 
         confirmationsRequired = _confirmationsRequired;
+    }
+
+    function addOwner(address _newOwner) public onlyWallet() validRequirement(owners.length + 1, confirmationsRequired){
+        require(_newOwner != address(0), 'invalid owner');
+        require(isOwner[_newOwner] == false, 'owner already exists');
+        
+        isOwner[_newOwner] = true;
+        owners.push(_newOwner);
     }
 
     function submitTransaction(address payable _to, uint256 _value, bytes memory _data) public onlyOwner {
