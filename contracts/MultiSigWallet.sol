@@ -101,16 +101,19 @@ contract MultiSigWallet {
         emit TransactionConfirmed(_txIndex, msg.sender);
     }
 
-    function executeTransaction(uint256 _txIndex) public onlyOwner() txExists(_txIndex) notExecuted(_txIndex) {
+    function executeTransaction(uint256 _txIndex) public payable onlyOwner() txExists(_txIndex) notExecuted(_txIndex) {
         require(transactions[_txIndex].confirmationsNr >= confirmationsRequired, 'not enough confirmations');
 
         address payable receiver = transactions[_txIndex].to;
-        uint256 value = transactions[_txIndex].value;
+        uint256 txValue = transactions[_txIndex].value;
 
         transactions[_txIndex].executed = true;
-        receiver.transfer(value);
+        (bool success, ) = receiver.call.value(txValue)(transactions[_txIndex].data);
+        require(success, 'tx failed');
+        
+        //receiver.transfer(value);
 
-        emit TransactionExecuted(receiver, value, msg.sender);
+        emit TransactionExecuted(receiver, txValue, msg.sender);
     }
 
     function revokeConfirmation(uint256 _txIndex) public onlyOwner() txExists(_txIndex) notExecuted(_txIndex) {

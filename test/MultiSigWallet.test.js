@@ -1,4 +1,4 @@
-const MultiSigWallet = artifacts.require("MultiSigWallet");
+/*const MultiSigWallet = artifacts.require("MultiSigWallet");
 const { assert } = require('chai');
 const chai = require('chai');
 chai.use(require('chai-as-promised'));
@@ -107,4 +107,4 @@ contract('MultiSigWallet', async function(accounts) {
             await truffleAssert.fails(wallet.confirmTransaction(0, {from: accounts[2]}))
         })
     })
-})
+})*/
