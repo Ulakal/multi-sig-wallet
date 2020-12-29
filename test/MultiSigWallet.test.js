@@ -1,7 +1,7 @@
-/*const MultiSigWallet = artifacts.require("MultiSigWallet");
+const MultiSigWallet = artifacts.require("MultiSigWallet");
 const { assert } = require('chai');
 const chai = require('chai');
-chai.use(require('chai-as-promised'));
+//chai.use(require('chai-as-promised'));
 const truffleAssert = require('truffle-assertions');
 
 
@@ -107,4 +107,64 @@ contract('MultiSigWallet', async function(accounts) {
             await truffleAssert.fails(wallet.confirmTransaction(0, {from: accounts[2]}))
         })
     })
-})*/
+    describe('changes owners correctly', async() => {
+        it('adds new owner correctly', async() => {
+            let addOwnerData = await web3.eth.abi.encodeFunctionCall({
+                name: 'addOwner',
+                type: 'function',
+                inputs: [{
+                    type: 'address',
+                    name: '_newOwner'
+                }]}, ['0xa748B7f6dD59e5b23BFfAEd1477E7222f63c980D']);
+            
+            let to = wallet.address
+            //submit tx
+            await wallet.submitTransaction(to, 0, addOwnerData, {from: accounts[0]})
+            
+            //check if tx was created correctly
+            let tx = await wallet.transactions(1)
+            assert.equal(tx.to, to, 'receiver is incorrect')
+            assert.equal(tx.value, 0, 'value is incorrect')
+            assert.equal(tx.data, addOwnerData, 'data is incorrect')
+            
+            //confirm tx
+            await wallet.confirmTransaction(1, {from: accounts[1]})
+            
+            //execute tx
+            await wallet.executeTransaction(1, {from: accounts[0]})
+            let check = await wallet.isOwner('0xa748B7f6dD59e5b23BFfAEd1477E7222f63c980D')
+            assert.equal(check, true, 'didnt add new owner correctly')
+        })
+        it('cannot add already existing owner', async() => {
+            let addOwnerData = await web3.eth.abi.encodeFunctionCall({
+                name: 'addOwner',
+                type: 'function',
+                inputs: [{
+                    type: 'address',
+                    name: '_newOwner'
+                }]}, ['0xa748B7f6dD59e5b23BFfAEd1477E7222f63c980D']);
+            
+            let to = wallet.address
+            
+            await wallet.submitTransaction(to, 0, addOwnerData, {from: accounts[0]})
+            await wallet.confirmTransaction(2, {from: accounts[1]})
+            await truffleAssert.fails(wallet.executeTransaction(2, {from: accounts[0]}))
+        })
+        it('cannot add 0 address as a new owner', async() => {
+            let addOwnerData = await web3.eth.abi.encodeFunctionCall({
+                name: 'addOwner',
+                type: 'function',
+                inputs: [{
+                    type: 'address',
+                    name: '_newOwner'
+                }]}, ['0x0000000000000000000000000000000000000000']);
+            
+            let to = wallet.address
+            
+            await wallet.submitTransaction(to, 0, addOwnerData, {from: accounts[0]})
+            await wallet.confirmTransaction(3, {from: accounts[1]})
+            await truffleAssert.fails(wallet.executeTransaction(3, {from: accounts[0]}))
+        })
+    })
+    
+})

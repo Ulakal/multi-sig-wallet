@@ -37,6 +37,14 @@ contract MultiSigWallet {
         require(transactions[_txIndex].executed == false, 'transaction already executed');
         _;
     }
+    modifier ownerExists(address _owner) {
+        require(isOwner[_owner] == true, 'owner doesnt exist');
+        _;
+    }
+    modifier ownerDoesntExist(address _owner) {
+        require(isOwner[_owner] == false, 'owner already exists');
+        _;
+    }
     modifier validRequirement(uint _ownersNumber, uint _confirmationsRequired) {
         require(_ownersNumber > 0, 'owners required');
         require(_ownersNumber <= maxOwners, 'too many owners');
@@ -49,6 +57,9 @@ contract MultiSigWallet {
     event TransactionExecuted(address indexed to, uint256 value, address executedBy);
     event ConfirmationRevoked(uint256 txIndex, address revokedBy);
     event Deposit(address indexed from, uint256 value, uint256 balance);
+    event OwnerAdded(address newOwner);
+    event OwnerDeleted(address owner);
+    event RequirementChanged(uint256 requirement);
 
     
     
@@ -66,12 +77,50 @@ contract MultiSigWallet {
         confirmationsRequired = _confirmationsRequired;
     }
 
-    function addOwner(address _newOwner) public onlyWallet() validRequirement(owners.length + 1, confirmationsRequired){
+    function addOwner(address _newOwner) public onlyWallet() ownerDoesntExist(_newOwner) validRequirement(owners.length + 1, confirmationsRequired){
         require(_newOwner != address(0), 'invalid owner');
-        require(isOwner[_newOwner] == false, 'owner already exists');
         
         isOwner[_newOwner] = true;
         owners.push(_newOwner);
+        emit OwnerAdded(_newOwner);
+    }
+
+    function deleteOwner(address _owner) public onlyWallet() ownerExists(_owner) {
+        
+        isOwner[_owner] = false;
+        
+        for(uint i = 0; i < owners.length; i++) {
+            if(owners[i] == _owner) {
+                owners[i] = owners[owners.length - 1];
+                delete owners[owners.length - 1];
+                break;
+            }
+        }
+
+        if(confirmationsRequired > owners.length) {
+            changeRequirement(owners.length);
+        }
+        emit OwnerDeleted(_owner);
+    }
+
+    function replaceOwners(address _oldOwner, address _newOwner) public onlyWallet() ownerExists(_oldOwner) ownerDoesntExist(_newOwner) {
+        require(_newOwner != address(0), 'invalid new owner address');
+
+        for (uint i = 0; i < owners.length; i++) {
+            if (owners[i] == _oldOwner) {
+                isOwner[_oldOwner] = false;
+                isOwner[_newOwner] = true;
+                owners[i] = _newOwner;
+                break;
+            }
+        }
+        emit OwnerAdded(_newOwner);
+        emit OwnerDeleted(_oldOwner);
+    }
+
+    function changeRequirement(uint256 _confirmationsRequired) public onlyWallet() validRequirement(owners.length, _confirmationsRequired) {
+        confirmationsRequired = _confirmationsRequired;
+        emit RequirementChanged(_confirmationsRequired);
     }
 
     function submitTransaction(address payable _to, uint256 _value, bytes memory _data) public onlyOwner {
@@ -110,8 +159,6 @@ contract MultiSigWallet {
         transactions[_txIndex].executed = true;
         (bool success, ) = receiver.call.value(txValue)(transactions[_txIndex].data);
         require(success, 'tx failed');
-        
-        //receiver.transfer(value);
 
         emit TransactionExecuted(receiver, txValue, msg.sender);
     }
