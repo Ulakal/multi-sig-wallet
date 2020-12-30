@@ -1,7 +1,6 @@
 const MultiSigWallet = artifacts.require("MultiSigWallet");
 const { assert } = require('chai');
 const chai = require('chai');
-//chai.use(require('chai-as-promised'));
 const truffleAssert = require('truffle-assertions');
 
 
@@ -9,7 +8,6 @@ contract('MultiSigWallet', async function(accounts) {
     let wallet 
     
     before(async () => {
-        //let owners = [accounts[0], accounts[1], accounts[2]]
         wallet = await MultiSigWallet.deployed()
         await wallet.deposit({from: accounts[0], value: web3.utils.toWei("3", "ether")})
     })
@@ -75,6 +73,7 @@ contract('MultiSigWallet', async function(accounts) {
             let txAfter = await wallet.transactions(0)
             assert.equal(txAfter.confirmationsNr.toNumber(), txBefore.confirmationsNr.toNumber() + 1)
 
+            //check if event is correct
             let event = result.logs[0]
             assert.equal(event.args.txIndex, 0)
             assert.equal(event.args.confirmedBy, accounts[1])
@@ -85,7 +84,16 @@ contract('MultiSigWallet', async function(accounts) {
             await truffleAssert.fails(wallet.revokeConfirmation(0, {from: accounts[2]})), truffleAssert.ErrorType.REVERT
         })
         it('revokes confirmation correctly', async() => {
-            await truffleAssert.passes(wallet.revokeConfirmation(0, {from: accounts[0]}))
+            let result = await wallet.revokeConfirmation(0, {from: accounts[0]})
+            //check if confirmation was revoked
+            let check = await wallet.isConfirmed(0, accounts[0])
+            assert.equal(check, false, 'did not revoke confirmation correctly')
+            
+            //check if event is correct
+            let event = result.logs[0]
+            assert.equal(event.args.txIndex, 0, 'event value txIndex is incorrect')
+            assert.equal(event.args.revokedBy, accounts[0], 'event value revokedBy is incorrect')
+            
             await wallet.confirmTransaction(0, {from: accounts[0]})
         })
     })
@@ -98,6 +106,7 @@ contract('MultiSigWallet', async function(accounts) {
             let tx = await wallet.transactions(0)
             assert.equal(tx.executed, true)
 
+            //check if event is correct
             let event = result.logs[0]
             assert.equal(event.args.to, accounts[3])
             assert.equal(event.args.value.toString(), web3.utils.toWei("1", "ether"))
@@ -109,6 +118,7 @@ contract('MultiSigWallet', async function(accounts) {
     })
     describe('changes owners correctly', async() => {
         it('adds new owner correctly', async() => {
+            //create bytes data to add to submitTransaction function
             let addOwnerData = await web3.eth.abi.encodeFunctionCall({
                 name: 'addOwner',
                 type: 'function',
@@ -131,9 +141,12 @@ contract('MultiSigWallet', async function(accounts) {
             await wallet.confirmTransaction(1, {from: accounts[1]})
             
             //execute tx
-            await wallet.executeTransaction(1, {from: accounts[0]})
+            let result = await wallet.executeTransaction(1, {from: accounts[0]})
             let check = await wallet.isOwner('0xa748B7f6dD59e5b23BFfAEd1477E7222f63c980D')
             assert.equal(check, true, 'didnt add new owner correctly')
+            //check if event is correct
+            let event = result.logs[0]
+            assert.equal(event.args.newOwner, '0xa748B7f6dD59e5b23BFfAEd1477E7222f63c980D', 'event OwnerAdder is incorrect')
         })
         it('cannot add already existing owner', async() => {
             let addOwnerData = await web3.eth.abi.encodeFunctionCall({
@@ -144,9 +157,7 @@ contract('MultiSigWallet', async function(accounts) {
                     name: '_newOwner'
                 }]}, ['0xa748B7f6dD59e5b23BFfAEd1477E7222f63c980D']);
             
-            let to = wallet.address
-            
-            await wallet.submitTransaction(to, 0, addOwnerData, {from: accounts[0]})
+            await wallet.submitTransaction(wallet.address, 0, addOwnerData, {from: accounts[0]})
             await wallet.confirmTransaction(2, {from: accounts[1]})
             await truffleAssert.fails(wallet.executeTransaction(2, {from: accounts[0]}))
         })
@@ -159,11 +170,104 @@ contract('MultiSigWallet', async function(accounts) {
                     name: '_newOwner'
                 }]}, ['0x0000000000000000000000000000000000000000']);
             
-            let to = wallet.address
-            
-            await wallet.submitTransaction(to, 0, addOwnerData, {from: accounts[0]})
+            await wallet.submitTransaction(wallet.address, 0, addOwnerData, {from: accounts[0]})
             await wallet.confirmTransaction(3, {from: accounts[1]})
             await truffleAssert.fails(wallet.executeTransaction(3, {from: accounts[0]}))
+        })
+        it('removes owner correctly', async() => {
+            let removeOwnerData = await web3.eth.abi.encodeFunctionCall({
+                name: 'deleteOwner',
+                type: 'function',
+                inputs: [{
+                    type: 'address',
+                    name: '_owner'
+                }]}, ['0xa748B7f6dD59e5b23BFfAEd1477E7222f63c980D']);
+
+            await wallet.submitTransaction(wallet.address, 0, removeOwnerData, {from: accounts[0]})
+            await wallet.confirmTransaction(4, {from: accounts[1]})
+            //execute tx
+            let result = await wallet.executeTransaction(4)
+            
+            //check if owner was removed
+            let check = await wallet.isOwner('0xa748B7f6dD59e5b23BFfAEd1477E7222f63c980D')
+            assert.equal(check, false, 'didnt remove owner correctly')
+            
+            //check if event is correct
+            let event = result.logs[0]
+            assert.equal(event.args.owner, '0xa748B7f6dD59e5b23BFfAEd1477E7222f63c980D', 'event deleteOwner incorrect')
+        })
+        it('cannot remove owner which doesnt exist', async() => {
+            let removeOwnerData = await web3.eth.abi.encodeFunctionCall({
+                name: 'deleteOwner',
+                type: 'function',
+                inputs: [{
+                    type: 'address',
+                    name: '_owner'
+                }]}, ['0xa748B7f6dD59e5b23BFfAEd1477E7222f63c980D']);
+
+            await wallet.submitTransaction(wallet.address, 0, removeOwnerData, {from: accounts[0]})
+            await wallet.confirmTransaction(5, {from: accounts[1]})
+            await truffleAssert.fails(wallet.executeTransaction(5)), truffleAssert.ErrorType.REVERT
+        })
+        it('replaces owners correctly', async() => {
+            let replaceOwnersData = await web3.eth.abi.encodeFunctionCall({
+                name: 'replaceOwners',
+                type: 'function',
+                inputs: [{
+                    type: 'address',
+                    name: '_oldOwner'
+                }, {
+                    type: 'address',
+                    name: '_newOwner'
+                }]}, ['0x23C528d890aAA9c56b0BB5d12Ecb17a0EC16633E', '0x0EBc43534609f74aA241Fb30eb624162f6Ab652F'])
+            
+            //check second position in owners array
+            let ownerToReplace = await wallet.owners(1)
+            assert.equal(ownerToReplace, '0x23C528d890aAA9c56b0BB5d12Ecb17a0EC16633E')
+            
+            await wallet.submitTransaction(wallet.address, 0, replaceOwnersData, {from: accounts[0]})
+            await wallet.confirmTransaction(6, {from: accounts[1]})
+            let result = await wallet.executeTransaction(6)
+
+            //check second position in owners array after replacement
+            let ownerAdded = await wallet.owners(1)
+            assert.equal(ownerAdded, '0x0EBc43534609f74aA241Fb30eb624162f6Ab652F')
+
+            //check if owner was correctly added/removed
+            let oldOwner = await wallet.isOwner('0x23C528d890aAA9c56b0BB5d12Ecb17a0EC16633E')
+            let newOwner = await wallet.isOwner('0x0EBc43534609f74aA241Fb30eb624162f6Ab652F')
+            assert.equal(oldOwner, false, 'did not remove old owner')
+            assert.equal(newOwner, true, 'did not add new owner')
+
+            //check events
+            let addEvent = result.logs[0]
+            assert.equal(addEvent.args.newOwner, ownerAdded, 'addOwner event incorrect')
+            
+            let deleteEvent = result.logs[1]
+            assert.equal(deleteEvent.args.owner, ownerToReplace, 'deleteOwner event incorrect')
+        })
+    })
+    describe('changes requirement correctly', async() => {
+        it('changes requirement correctly', async() => {
+            let changeRequirementData = await web3.eth.abi.encodeFunctionCall({
+                name: 'changeRequirement',
+                type: 'function',
+                inputs: [{
+                    type: 'uint256',
+                    name: '_confirmationsRequired'
+                }]}, ['3'])
+            
+            await wallet.submitTransaction(wallet.address, 0, changeRequirementData, {from: accounts[0]})
+            await wallet.confirmTransaction(7, {from: accounts[2]})
+            let result = await wallet.executeTransaction(7)
+
+            //check if confirmationsRequired was changed correctly
+            let check = await wallet.confirmationsRequired()
+            assert.equal(check, 3, 'wrong confirmation requirement number')
+
+            //check an event
+            let event = result.logs[0]
+            assert.equal(event.args.requirement.toNumber(), check, 'changedRequirement event incorrect')
         })
     })
     
